@@ -19,9 +19,9 @@ terraform {
 }
 
 provider "aws" {
-  region = "us-east-1"
+  region = local.region_values_maps["region1"].region
 }
 provider "aws" {
   alias  = "multi"
-  region = "us-west-2"
+  region = local.region_values_maps["region2"].region
 }

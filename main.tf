@@ -156,6 +156,43 @@ module "rds" {
 
   depends_on = [module.vpc, module.security_groups, module.secrets_manager]
 }
+
+# IAM Policies Module
+module "iam_policies" {
+  source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/iam/policies?ref=main"
+  for_each = local.iam_policies
+
+  # Policy Configuration
+  policy_name     = each.value.policy_name
+  description     = each.value.description
+  policy_document = each.value.policy_document
+
+  # Common Tags
+  common_tags = each.value.tags
+
+  depends_on = [module.secrets_manager]
+}
+
+# IAM Roles Module
+module "iam_roles" {
+  source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/iam/roles?ref=main"
+  for_each = local.iam_roles
+
+  # Role Configuration
+  role_name               = each.value.role_name
+  description            = each.value.description
+  assume_role_policy     = each.value.assume_role_policy
+  create_instance_profile = each.value.create_instance_profile
+
+  # Policies
+  custom_policy_arns = each.value.custom_policy_arns
+
+  # Common Tags
+  common_tags = each.value.tags
+
+  depends_on = [module.iam_policies]
+}
+
 module "rds_read_replica" {
   providers = {
     aws = aws.multi
@@ -174,6 +211,7 @@ module "rds_read_replica" {
   
   # Storage Configuration
   storage_encrypted = lookup(each.value, "storage_encrypted", true)
+  kms_key_id       = lookup(each.value, "kms_key_id", null)
   
   # Subnet Group Configuration (choose one option)
   create_subnet_group        = lookup(each.value, "create_subnet_group", false)
@@ -184,4 +222,79 @@ module "rds_read_replica" {
   # Common Tags
   common_tags = each.value.tags
   depends_on  = [module.vpc2, module.security_groups_2]
+}
+
+# EC2 Instances - Primary Region (us-east-1)
+module "ec2" {
+  source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/ec2?ref=main"
+  for_each = local.ec2_instances
+
+  # Basic Configuration
+  instance_name = each.value.instance_name
+  instance_type = each.value.instance_type
+
+  # Network Configuration
+  subnet_id                    = each.value.subnet_id
+  vpc_security_group_ids      = each.value.vpc_security_group_ids
+  associate_public_ip_address = each.value.associate_public_ip_address
+
+  # SSH Access
+  create_key_pair = each.value.create_key_pair
+  key_name       = each.value.key_name
+  public_key     = each.value.public_key
+
+  # Storage Configuration
+  root_volume_size      = each.value.root_volume_size
+  root_volume_type     = each.value.root_volume_type
+  root_volume_encrypted = each.value.root_volume_encrypted
+
+  # User Data
+  user_data = each.value.user_data
+
+  # IAM Instance Profile
+  iam_instance_profile = each.value.iam_instance_profile
+
+  # Common Tags
+  common_tags = each.value.tags
+
+  depends_on = [module.vpc, module.security_groups, module.rds, module.iam_roles]
+}
+
+# EC2 Instances - Secondary Region (us-west-2)
+module "ec2_secondary" {
+  providers = {
+    aws = aws.multi
+  }
+  source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/ec2?ref=main"
+  for_each = local.ec2_instances_2
+
+  # Basic Configuration
+  instance_name = each.value.instance_name
+  instance_type = each.value.instance_type
+
+  # Network Configuration
+  subnet_id                    = each.value.subnet_id
+  vpc_security_group_ids      = each.value.vpc_security_group_ids
+  associate_public_ip_address = each.value.associate_public_ip_address
+
+  # SSH Access
+  create_key_pair = each.value.create_key_pair
+  key_name       = each.value.key_name
+  public_key     = each.value.public_key
+
+  # Storage Configuration
+  root_volume_size      = each.value.root_volume_size
+  root_volume_type     = each.value.root_volume_type
+  root_volume_encrypted = each.value.root_volume_encrypted
+
+  # User Data
+  user_data = each.value.user_data
+
+  # IAM Instance Profile
+  iam_instance_profile = each.value.iam_instance_profile
+
+  # Common Tags
+  common_tags = each.value.tags
+
+  depends_on = [module.vpc2, module.security_groups_2, module.rds_read_replica, module.iam_roles]
 }
