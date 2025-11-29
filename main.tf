@@ -344,3 +344,26 @@ module "ec2_secondary" {
 
   depends_on = [module.vpc2, module.security_groups_ec2_2, module.iam_roles]
 }
+
+module "s3" {
+  source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/s3?ref=main"
+  for_each = local.s3_buckets
+
+  name                = each.key
+  versioning          = each.value.versioning
+  block_public_access = each.value.block_public_access
+  policy              = try(each.value.policy, null)
+  tags                = each.value.tags
+}
+module "s3_2" {
+  source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/s3?ref=main"
+  for_each = local.s3_buckets2
+  providers = {
+    aws = aws.multi
+  }
+  name                = each.key
+  versioning          = each.value.versioning
+  block_public_access = each.value.block_public_access
+  policy              = try(each.value.policy, null)
+  tags                = each.value.tags
+}
