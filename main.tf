@@ -58,26 +58,6 @@ module "vpc2" {
   common_tags = each.value.tags
 }
 
-# Security Groups for EC2 instances (Region 1)
-module "security_groups_ec2" {
-  source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/security_groups?ref=main"
-  for_each = local.security_groups_ec2
-
-  # Security Group Configuration
-  name        = each.key
-  description = each.value.description
-  vpc_id      = each.value.vpc_id
-
-  # Rules Configuration
-  ingress_rules = each.value.ingress_rules
-  egress_rules  = each.value.egress_rules
-
-  # Common Tags
-  common_tags = each.value.tags
-
-  depends_on = [module.vpc]
-}
-
 # Security Groups for RDS (Region 1)
 module "security_groups_rds" {
   source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/security_groups?ref=main"
@@ -95,29 +75,7 @@ module "security_groups_rds" {
   # Common Tags
   common_tags = each.value.tags
 
-  depends_on = [module.vpc, module.security_groups_ec2]
-}
-# Security Groups for EC2 instances (Region 2)
-module "security_groups_ec2_2" {
-  providers = {
-    aws = aws.multi
-  }
-  source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/security_groups?ref=main"
-  for_each = local.security_groups_ec2_2
-
-  # Security Group Configuration
-  name        = each.key
-  description = each.value.description
-  vpc_id      = each.value.vpc_id
-
-  # Rules Configuration
-  ingress_rules = each.value.ingress_rules
-  egress_rules  = each.value.egress_rules
-
-  # Common Tags
-  common_tags = each.value.tags
-
-  depends_on = [module.vpc2]
+  depends_on = [module.vpc]
 }
 
 # Security Groups for RDS (Region 2)
@@ -140,7 +98,7 @@ module "security_groups_rds_2" {
   # Common Tags
   common_tags = each.value.tags
 
-  depends_on = [module.vpc2, module.security_groups_ec2_2]
+  depends_on = [module.vpc2]
 }
 
 module "secrets_manager" {
@@ -268,81 +226,6 @@ module "rds_read_replica" {
   # Common Tags
   common_tags = each.value.tags
   depends_on  = [module.vpc2, module.security_groups_rds_2]
-}
-
-# EC2 Instances - Primary Region (us-east-1)
-module "ec2" {
-  source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/ec2?ref=main"
-  for_each = local.ec2_instances
-
-  # Basic Configuration
-  instance_name = each.key
-  instance_type = each.value.instance_type
-
-  # Network Configuration
-  subnet_id                    = each.value.subnet_id
-  vpc_security_group_ids      = each.value.vpc_security_group_ids
-  associate_public_ip_address = each.value.associate_public_ip_address
-
-  # SSH Access
-  create_key_pair = each.value.create_key_pair
-  key_name       = each.value.key_name
-  public_key     = each.value.public_key
-
-  # Storage Configuration
-  root_volume_size      = each.value.root_volume_size
-  root_volume_type     = each.value.root_volume_type
-  root_volume_encrypted = each.value.root_volume_encrypted
-
-  # User Data
-  user_data = each.value.user_data
-
-  # IAM Instance Profile
-  iam_instance_profile = each.value.iam_instance_profile
-
-  # Common Tags
-  common_tags = each.value.tags
-
-  depends_on = [module.vpc, module.security_groups_ec2, module.iam_roles]
-}
-
-# EC2 Instances - Secondary Region (us-west-2)
-module "ec2_secondary" {
-  providers = {
-    aws = aws.multi
-  }
-  source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/ec2?ref=main"
-  for_each = local.ec2_instances_2
-
-  # Basic Configuration
-  instance_name = each.key
-  instance_type = each.value.instance_type
-
-  # Network Configuration
-  subnet_id                    = each.value.subnet_id
-  vpc_security_group_ids      = each.value.vpc_security_group_ids
-  associate_public_ip_address = each.value.associate_public_ip_address
-
-  # SSH Access
-  create_key_pair = each.value.create_key_pair
-  key_name       = each.value.key_name
-  public_key     = each.value.public_key
-
-  # Storage Configuration
-  root_volume_size      = each.value.root_volume_size
-  root_volume_type     = each.value.root_volume_type
-  root_volume_encrypted = each.value.root_volume_encrypted
-
-  # User Data
-  user_data = each.value.user_data
-
-  # IAM Instance Profile
-  iam_instance_profile = each.value.iam_instance_profile
-
-  # Common Tags
-  common_tags = each.value.tags
-
-  depends_on = [module.vpc2, module.security_groups_ec2_2, module.iam_roles]
 }
 
 module "s3" {
