@@ -332,7 +332,7 @@ locals {
     }
   }
   s3_buckets = {
-  "multiregion-${account_id}-${region1}-${local.environment}-data" = {
+  "multiregion-${local.account_id}-${local.region1["region"]}-${local.environment}-data" = {
     tags                  = local.common_tags
     versioning            = true
     block_public_access   = true
@@ -340,7 +340,7 @@ locals {
   }
   }
   s3_buckets2 = {
-  "multiregion-${account_id}-${region2}-${local.environment}-data" = {
+  "multiregion-${local.account_id}-${local.region2["region"]}-${local.environment}-data" = {
     tags                  = local.common_tags
     versioning            = true
     block_public_access   = true
