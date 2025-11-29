@@ -346,7 +346,7 @@ module "ec2_secondary" {
 }
 
 module "s3" {
-  source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/s3?ref=main"
+  source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/s3/bucket?ref=main"
   for_each = local.s3_buckets
 
   name                = each.key
@@ -356,7 +356,7 @@ module "s3" {
   tags                = each.value.tags
 }
 module "s3_2" {
-  source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/s3?ref=main"
+  source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/s3/bucket?ref=main"
   for_each = local.s3_buckets2
   providers = {
     aws = aws.multi
