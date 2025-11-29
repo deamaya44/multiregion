@@ -160,7 +160,8 @@ locals {
     "lambda-execution-policy-${local.environment}" = {
       description = "Policy for Lambda execution"
       policy_document = templatefile("${path.root}/policies/lambda-execution-policy.json.tpl", {
-        secret_arn = module.secrets_manager["rds_admin_password_${local.environment}_2"].secret_arn
+        secret_arn         = module.secrets_manager["rds_admin_password_${local.environment}_2"].secret_arn
+        secret_arn_replica = data.aws_secretsmanager_secret.rds_password_replica.arn
       })
       tags = local.common_tags
     }
@@ -198,7 +199,7 @@ locals {
       skip_final_snapshot    = true
       db_name                = "postgres"
       username               = "postgres_admin"
-      password               = module.secrets_manager["rds_admin_password_${local.environment}_2"].secret_arn
+      password               = module.secrets_manager["rds_admin_password_${local.environment}_2"].generated_password
       port                   = 5432
       vpc_security_group_ids = [module.security_groups_rds["multiregion-${local.environment}-rds-sg"].security_group_id] # Add security group IDs if needed
       subnet_ids             = module.vpc["multiregion-${local.environment}-vpc"].private_subnet_ids
@@ -356,7 +357,7 @@ locals {
         DB_HOST       = module.rds_read_replica["multiregion-${local.environment}-rds-replica"].read_replica_endpoint
         DB_NAME       = "postgres"
         DB_USER       = "postgres_admin"
-        DB_SECRET_ARN = module.secrets_manager["rds_admin_password_${local.environment}_2"].secret_arn
+        DB_SECRET_ARN = data.aws_secretsmanager_secret.rds_password_replica.arn
         DB_PORT       = "5432"
       }
 

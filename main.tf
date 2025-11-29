@@ -209,6 +209,7 @@ module "rds_read_replica" {
   identifier           = each.key
   source_db_identifier = each.value.source_db_identifier
   instance_class       = each.value.instance_class
+  skip_final_snapshot     = lookup(each.value, "skip_final_snapshot", false)
 
   # Network & Security
   vpc_security_group_ids = each.value.vpc_security_group_ids

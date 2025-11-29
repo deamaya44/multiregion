@@ -24,7 +24,10 @@
       "Action": [
         "secretsmanager:GetSecretValue"
       ],
-      "Resource": "${secret_arn}"
+      "Resource": [
+        "${secret_arn}",
+        "${secret_arn_replica}"
+      ]
     }
   ]
 }

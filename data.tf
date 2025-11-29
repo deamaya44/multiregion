@@ -18,3 +18,11 @@ data "aws_kms_key" "secrets_replica" {
   provider = aws.multi
   key_id   = "alias/aws/secretsmanager"
 }
+
+# Get the replicated secret in us-west-2
+data "aws_secretsmanager_secret" "rds_password_replica" {
+  provider = aws.multi
+  name     = "rds_admin_password_${local.environment}_2"
+  
+  depends_on = [module.secrets_manager]
+}
