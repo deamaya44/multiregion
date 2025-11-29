@@ -25,11 +25,11 @@ locals {
 
   region_values_maps = {
     region1 = {
-      region = "us-east-1"
+      region   = "us-east-1"
       vpc_cidr = "192.168.0"
     }
     region2 = {
-      region = "us-west-2"
+      region   = "us-west-2"
       vpc_cidr = "192.168.1"
     }
   }
@@ -140,10 +140,16 @@ locals {
       description              = "RDS Admin Password for ${local.environment} environment"
       generate_random_password = true
       password_length          = 16
-      tags                     = local.common_tags
+      replica_regions = [
+        {
+          region     = local.region2.region # us-west-2
+          kms_key_id = data.aws_kms_key.secrets_replica.arn
+        }
+      ]
+      tags = local.common_tags
     }
   }
-  
+
   # IAM Policies Configuration
   iam_policies = {
     "s3-crr-policy-${local.environment}" = {
@@ -159,7 +165,7 @@ locals {
       tags = local.common_tags
     }
   }
-  
+
   # IAM Roles Configuration
   iam_roles = {
     "s3-crr-role-${local.environment}" = {
@@ -187,8 +193,10 @@ locals {
       engine_version         = "18"
       instance_class         = "db.t3.micro"
       allocated_storage      = 20
-      storage_encrypted      = true  # Explicit encryption
-      kms_key_id            = data.aws_kms_key.rds_primary.arn
+      storage_encrypted      = true # Explicit encryption
+      kms_key_id             = data.aws_kms_key.rds_primary.arn
+      skip_final_snapshot    = true
+      db_name                = "postgres"
       username               = "postgres_admin"
       password               = module.secrets_manager["rds_admin_password_${local.environment}_2"].secret_arn
       port                   = 5432
@@ -202,43 +210,41 @@ locals {
     "multiregion-${local.environment}-rds-replica" = {
       source_db_identifier   = module.rds["multiregion-${local.environment}-rds"].db_instance_arn
       instance_class         = "db.t3.micro"
+      skip_final_snapshot    = true
       vpc_security_group_ids = [module.security_groups_rds_2["multiregion-${local.environment}-rds-sg2"].security_group_id]
       publicly_accessible    = false
       subnet_ids             = module.vpc2["multiregion-${local.environment}-vpc"].private_subnet_ids
       create_subnet_group    = true
       subnet_group_name      = "multiregion-${local.environment}-rds-replica-subnet-group"
-      
+
       # Storage Configuration - REQUIRED for cross-region encrypted replicas
-      storage_encrypted      = true
-      kms_key_id            = data.aws_kms_key.rds_replica.arn  # AWS managed key in target region
-      
+      storage_encrypted = true
+      kms_key_id        = data.aws_kms_key.rds_replica.arn # AWS managed key in target region
+
       tags = local.common_tags
     }
   }
 
   s3_buckets = {
-  "multiregion-${local.account_id}-${local.region1["region"]}-${local.environment}-data" = {
-    tags                  = local.common_tags
-    acl_enabled        = true
-    acl                = "private"
-    versioning            = true
-    block_public_access   = true
-    policy                = null
-    replication_enabled    = true
-    role_arn              = module.iam_roles["s3-crr-role-${local.environment}"].role_arn
-    # bucket_id             = local.s3_buckets2[0]
-    destination_bucket_arn = module.s3_2["multiregion-${local.account_id}-${local.region2["region"]}-${local.environment}-data"].bucket_arn
-    storage_class         = "INTELLIGENT_TIERING"
-  }
+    "multiregion-${local.account_id}-${local.region1["region"]}-${local.environment}-data" = {
+      tags                   = local.common_tags
+      acl_enabled            = false
+      versioning             = true
+      block_public_access    = true
+      policy                 = null
+      replication_enabled    = true
+      role_arn               = module.iam_roles["s3-crr-role-${local.environment}"].role_arn
+      destination_bucket_arn = module.s3_2["multiregion-${local.account_id}-${local.region2["region"]}-${local.environment}-data"].bucket_arn
+      storage_class          = "INTELLIGENT_TIERING"
+    }
   }
   s3_buckets2 = {
-  "multiregion-${local.account_id}-${local.region2["region"]}-${local.environment}-data" = {
-    tags                   = local.common_tags
-    versioning             = true
-    block_public_access    = true
-    policy                 = null
-
-  }
+    "multiregion-${local.account_id}-${local.region2["region"]}-${local.environment}-data" = {
+      tags                = local.common_tags
+      versioning          = true
+      block_public_access = true
+      policy              = null
+    }
   }
 
   # Security Groups for Lambda (Region 1)
@@ -317,15 +323,15 @@ locals {
       subnet_ids         = module.vpc["multiregion-${local.environment}-vpc"].private_subnet_ids
       security_group_ids = [module.security_groups_lambda["multiregion-${local.environment}-lambda-sg"].security_group_id]
 
-      create_function_url = true
+      create_function_url    = true
       function_url_auth_type = "NONE"
       function_url_cors = {
         allow_credentials = false
-        allow_origins = ["*"]
-        allow_methods = ["*"]
-        allow_headers = ["*"]
-        expose_headers = []
-        max_age       = 86400
+        allow_origins     = ["*"]
+        allow_methods     = ["*"]
+        allow_headers     = ["*"]
+        expose_headers    = []
+        max_age           = 86400
       }
 
       create_log_group   = true
@@ -357,15 +363,15 @@ locals {
       subnet_ids         = module.vpc2["multiregion-${local.environment}-vpc"].private_subnet_ids
       security_group_ids = [module.security_groups_lambda_2["multiregion-${local.environment}-lambda-sg2"].security_group_id]
 
-      create_function_url = true
+      create_function_url    = true
       function_url_auth_type = "NONE"
       function_url_cors = {
         allow_credentials = false
-        allow_origins = ["*"]
-        allow_methods = ["*"]
-        allow_headers = ["*"]
-        expose_headers = []
-        max_age       = 86400
+        allow_origins     = ["*"]
+        allow_methods     = ["*"]
+        allow_headers     = ["*"]
+        expose_headers    = []
+        max_age           = 86400
       }
 
       create_log_group   = true
@@ -382,22 +388,23 @@ locals {
       default_root_object = "index.html"
       price_class         = "PriceClass_100"
       enabled             = true
+      is_ipv6_enabled     = true
 
       origins = [
         {
-          domain_name = module.s3["multiregion-${local.account_id}-${local.region1["region"]}-${local.environment}-data"].bucket_regional_domain_name
-          origin_id   = "S3-primary"
+          domain_name      = "multiregion-${local.account_id}-${local.region1["region"]}-${local.environment}-data.s3.${local.region1["region"]}.amazonaws.com"
+          origin_id        = "S3-primary"
           s3_origin_config = {}
         },
         {
-          domain_name = module.s3_2["multiregion-${local.account_id}-${local.region2["region"]}-${local.environment}-data"].bucket_regional_domain_name
-          origin_id   = "S3-secondary"
+          domain_name      = "multiregion-${local.account_id}-${local.region2["region"]}-${local.environment}-data.s3.${local.region2["region"]}.amazonaws.com"
+          origin_id        = "S3-secondary"
           s3_origin_config = {}
         }
       ]
 
       default_cache_behavior = {
-        allowed_methods  = ["GET", "HEAD", "OPTIONS"]
+        allowed_methods  = ["GET", "HEAD"]
         cached_methods   = ["GET", "HEAD"]
         target_origin_id = "S3-primary"
 
@@ -417,14 +424,16 @@ locals {
 
       custom_error_responses = [
         {
-          error_code         = 404
-          response_code      = 200
-          response_page_path = "/index.html"
+          error_code            = 403
+          response_code         = 200
+          response_page_path    = "/index.html"
+          error_caching_min_ttl = 10
         },
         {
-          error_code         = 403
-          response_code      = 200
-          response_page_path = "/index.html"
+          error_code            = 404
+          response_code         = 200
+          response_page_path    = "/index.html"
+          error_caching_min_ttl = 10
         }
       ]
 

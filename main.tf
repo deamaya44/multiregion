@@ -112,6 +112,7 @@ module "secrets_manager" {
   # Secret Content (choose one option)
   secret_string    = lookup(each.value, "secret_string", null)
   secret_key_value = lookup(each.value, "secret_key_value", null)
+  replica_regions  = lookup(each.value, "replica_regions", [])
 
   # Random Password Generation (optional)
   generate_random_password = lookup(each.value, "generate_random_password", false)
@@ -183,12 +184,12 @@ module "iam_roles" {
 
   # Role Configuration
   role_name               = each.key
-  description            = each.value.description
-  assume_role_policy     = each.value.assume_role_policy
+  description             = each.value.description
+  assume_role_policy      = each.value.assume_role_policy
   create_instance_profile = each.value.create_instance_profile
 
   # Policies
-  custom_policy_arns = each.value.custom_policy_arns
+  custom_policy_arns      = each.value.custom_policy_arns
   aws_managed_policy_arns = lookup(each.value, "aws_managed_policy_arns", [])
 
   # Common Tags
@@ -212,11 +213,11 @@ module "rds_read_replica" {
   # Network & Security
   vpc_security_group_ids = each.value.vpc_security_group_ids
   publicly_accessible    = lookup(each.value, "publicly_accessible", false)
-  
+
   # Storage Configuration
   storage_encrypted = lookup(each.value, "storage_encrypted", true)
-  kms_key_id       = lookup(each.value, "kms_key_id", null)
-  
+  kms_key_id        = lookup(each.value, "kms_key_id", null)
+
   # Subnet Group Configuration (choose one option)
   create_subnet_group        = lookup(each.value, "create_subnet_group", false)
   subnet_group_name          = lookup(each.value, "subnet_group_name", null)
@@ -232,18 +233,18 @@ module "s3" {
   source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/s3/bucket?ref=main"
   for_each = local.s3_buckets
 
-  name                = each.key
-  versioning          = each.value.versioning
-  acl_enabled         = try(each.value.acl_enabled, false)
-  acl                 = try(each.value.acl, "private")
-  replication_enabled = try(each.value.replication_enabled, false)
-  role_arn            = try(each.value.role_arn, null)
-  bucket_id           = each.key
+  name                   = each.key
+  versioning             = each.value.versioning
+  acl_enabled            = try(each.value.acl_enabled, false)
+  acl                    = try(each.value.acl, "private")
+  replication_enabled    = try(each.value.replication_enabled, false)
+  role_arn               = try(each.value.role_arn, null)
+  bucket_id              = each.key
   destination_bucket_arn = try(each.value.destination_bucket_arn, null)
-  storage_class       = try(each.value.storage_class, "STANDARD")
-  block_public_access = each.value.block_public_access
+  storage_class          = try(each.value.storage_class, "STANDARD")
+  block_public_access    = each.value.block_public_access
   # policy              = try(each.value.policy, null)
-  tags                = each.value.tags
+  tags = each.value.tags
 }
 module "s3_2" {
   source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/s3/bucket?ref=main"
@@ -251,17 +252,17 @@ module "s3_2" {
   providers = {
     aws = aws.multi
   }
-  name                   = each.key
-  versioning             = each.value.versioning
+  name       = each.key
+  versioning = each.value.versioning
   # replication_enabled    = try(each.value.replication_enabled, false)
   # role_arn               = try(each.value.replication_enabled, false) ? module.iam_roles["s3-crr-role-${local.environment}"].role_arn : null
   # bucket_id              = each.key
   # destination_bucket_arn = try(each.value.destination_bucket_arn, null)
   # storage_class          = try(each.value.storage_class, "STANDARD")
-  block_public_access    = each.value.block_public_access
+  block_public_access = each.value.block_public_access
   # policy                 = try(each.value.policy, null)
-  tags                   = each.value.tags
-  
+  tags = each.value.tags
+
   depends_on = [module.iam_roles]
 }
 # S3 bucket for Frontend
@@ -386,6 +387,7 @@ module "cloudfront" {
   default_root_object = each.value.default_root_object
   price_class         = each.value.price_class
   enabled             = each.value.enabled
+  is_ipv6_enabled     = each.value.is_ipv6_enabled
 
   origins = each.value.origins
 
@@ -396,4 +398,48 @@ module "cloudfront" {
   common_tags = each.value.tags
 
   depends_on = [module.s3, module.s3_2]
+}
+
+# S3 Bucket Policies for CloudFront OAI
+resource "aws_s3_bucket_policy" "cloudfront_primary" {
+  bucket = "multiregion-${local.account_id}-${local.region1["region"]}-${local.environment}-data"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowCloudFrontOAI"
+        Effect = "Allow"
+        Principal = {
+          AWS = module.cloudfront["multiregion-${local.environment}-frontend"].oai_iam_arn
+        }
+        Action   = "s3:GetObject"
+        Resource = "arn:aws:s3:::multiregion-${local.account_id}-${local.region1["region"]}-${local.environment}-data/*"
+      }
+    ]
+  })
+
+  depends_on = [module.cloudfront, module.s3]
+}
+
+resource "aws_s3_bucket_policy" "cloudfront_secondary" {
+  provider = aws.multi
+  bucket   = "multiregion-${local.account_id}-${local.region2["region"]}-${local.environment}-data"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowCloudFrontOAI"
+        Effect = "Allow"
+        Principal = {
+          AWS = module.cloudfront["multiregion-${local.environment}-frontend"].oai_iam_arn
+        }
+        Action   = "s3:GetObject"
+        Resource = "arn:aws:s3:::multiregion-${local.account_id}-${local.region2["region"]}-${local.environment}-data/*"
+      }
+    ]
+  })
+
+  depends_on = [module.cloudfront, module.s3_2]
 }
