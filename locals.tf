@@ -205,6 +205,11 @@ locals {
       policy_document = file("${path.root}/policies/ec2-secrets-manager-policy.json")
       tags = local.common_tags
     }
+    "s3-crr-policy-${local.environment}" = {
+      description     = "Policy for S3 Cross-Region Replication"
+      policy_document = file("${path.root}/policies/s3-crr-policy.json")
+      tags            = local.common_tags
+    }
   }
   
   # IAM Roles Configuration
@@ -216,6 +221,14 @@ locals {
       custom_policy_arns = [module.iam_policies["ec2-secrets-manager-policy-${local.environment}"].policy_arn]
       aws_managed_policy_arns = ["arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"]
       tags = local.common_tags
+    }
+    "s3-crr-role-${local.environment}" = {
+      description             = "Role for S3 Cross-Region Replication"
+      assume_role_policy      = file("${path.root}/policies/s3-crr-assume-role-policy.json")
+      create_instance_profile = false
+      custom_policy_arns      = [module.iam_policies["s3-crr-policy-${local.environment}"].policy_arn]
+      aws_managed_policy_arns = []
+      tags                    = local.common_tags
     }
   }
   rds_instances = {
@@ -339,14 +352,20 @@ locals {
     versioning            = true
     block_public_access   = true
     policy                = null
+    replication_enabled    = true
+    role_arn              = module.iam_roles["s3-crr-role-${local.environment}"].role_arn
+    # bucket_id             = local.s3_buckets2[0]
+    destination_bucket_arn = module.s3_2["multiregion-${local.account_id}-${local.region2["region"]}-${local.environment}-data"].bucket_arn
+    storage_class         = "INTELLIGENT_TIERING"
   }
   }
   s3_buckets2 = {
   "multiregion-${local.account_id}-${local.region2["region"]}-${local.environment}-data" = {
-    tags                  = local.common_tags
-    versioning            = true
-    block_public_access   = true
-    policy                = null
+    tags                   = local.common_tags
+    versioning             = true
+    block_public_access    = true
+    policy                 = null
+
   }
   }
 }
