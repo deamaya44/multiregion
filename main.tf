@@ -264,3 +264,136 @@ module "s3_2" {
   
   depends_on = [module.iam_roles]
 }
+# S3 bucket for Frontend
+# Security Groups for Lambda (Region 1)
+module "security_groups_lambda" {
+  source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/security_groups?ref=main"
+  for_each = local.security_groups_lambda
+
+  name        = each.key
+  description = each.value.description
+  vpc_id      = each.value.vpc_id
+
+  ingress_rules = each.value.ingress_rules
+  egress_rules  = each.value.egress_rules
+
+  common_tags = each.value.tags
+
+  depends_on = [module.vpc]
+}
+
+# Security Groups for Lambda (Region 2)
+module "security_groups_lambda_2" {
+  providers = {
+    aws = aws.multi
+  }
+  source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/security_groups?ref=main"
+  for_each = local.security_groups_lambda_2
+
+  name        = each.key
+  description = each.value.description
+  vpc_id      = each.value.vpc_id
+
+  ingress_rules = each.value.ingress_rules
+  egress_rules  = each.value.egress_rules
+
+  common_tags = each.value.tags
+
+  depends_on = [module.vpc2]
+}
+
+# Lambda Functions (Region 1)
+module "lambda" {
+  source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/lambda?ref=main"
+  for_each = local.lambda_functions
+
+  function_name = each.value.function_name
+  role_arn      = each.value.role_arn
+  handler       = each.value.handler
+  runtime       = each.value.runtime
+  timeout       = each.value.timeout
+  memory_size   = each.value.memory_size
+
+  filename = each.value.filename
+
+  environment_variables = each.value.environment_variables
+
+  subnet_ids         = each.value.subnet_ids
+  security_group_ids = each.value.security_group_ids
+
+  create_function_url    = each.value.create_function_url
+  function_url_auth_type = each.value.function_url_auth_type
+  function_url_cors      = each.value.function_url_cors
+
+  create_log_group   = each.value.create_log_group
+  log_retention_days = each.value.log_retention_days
+
+  common_tags = each.value.tags
+
+  depends_on = [
+    module.vpc,
+    module.security_groups_lambda,
+    module.iam_roles,
+    module.rds
+  ]
+}
+
+# Lambda Functions (Region 2)
+module "lambda_2" {
+  providers = {
+    aws = aws.multi
+  }
+  source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/lambda?ref=main"
+  for_each = local.lambda_functions_2
+
+  function_name = each.value.function_name
+  role_arn      = each.value.role_arn
+  handler       = each.value.handler
+  runtime       = each.value.runtime
+  timeout       = each.value.timeout
+  memory_size   = each.value.memory_size
+
+  filename = each.value.filename
+
+  environment_variables = each.value.environment_variables
+
+  subnet_ids         = each.value.subnet_ids
+  security_group_ids = each.value.security_group_ids
+
+  create_function_url    = each.value.create_function_url
+  function_url_auth_type = each.value.function_url_auth_type
+  function_url_cors      = each.value.function_url_cors
+
+  create_log_group   = each.value.create_log_group
+  log_retention_days = each.value.log_retention_days
+
+  common_tags = each.value.tags
+
+  depends_on = [
+    module.vpc2,
+    module.security_groups_lambda_2,
+    module.iam_roles,
+    module.rds_read_replica
+  ]
+}
+
+# CloudFront Distribution
+module "cloudfront" {
+  source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/cloudfront?ref=main"
+  for_each = local.cloudfront_distributions
+
+  comment             = each.value.comment
+  default_root_object = each.value.default_root_object
+  price_class         = each.value.price_class
+  enabled             = each.value.enabled
+
+  origins = each.value.origins
+
+  default_cache_behavior = each.value.default_cache_behavior
+
+  custom_error_responses = each.value.custom_error_responses
+
+  common_tags = each.value.tags
+
+  depends_on = [module.s3, module.s3_2]
+}

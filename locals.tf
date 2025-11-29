@@ -151,6 +151,13 @@ locals {
       policy_document = file("${path.root}/policies/s3-crr-policy.json")
       tags            = local.common_tags
     }
+    "lambda-execution-policy-${local.environment}" = {
+      description = "Policy for Lambda execution"
+      policy_document = templatefile("${path.root}/policies/lambda-execution-policy.json.tpl", {
+        secret_arn = module.secrets_manager["rds_admin_password_${local.environment}_2"].secret_arn
+      })
+      tags = local.common_tags
+    }
   }
   
   # IAM Roles Configuration
@@ -162,6 +169,16 @@ locals {
       custom_policy_arns      = [module.iam_policies["s3-crr-policy-${local.environment}"].policy_arn]
       aws_managed_policy_arns = []
       tags                    = local.common_tags
+    }
+    "lambda-execution-role-${local.environment}" = {
+      description             = "Role for Lambda execution"
+      assume_role_policy      = file("${path.root}/policies/lambda-assume-role-policy.json")
+      create_instance_profile = false
+      custom_policy_arns      = [module.iam_policies["lambda-execution-policy-${local.environment}"].policy_arn]
+      aws_managed_policy_arns = [
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+      ]
+      tags = local.common_tags
     }
   }
   rds_instances = {
@@ -223,6 +240,199 @@ locals {
 
   }
   }
+
+  # Security Groups for Lambda (Region 1)
+  security_groups_lambda = {
+    "multiregion-${local.environment}-lambda-sg" = {
+      description = "Security group for Lambda function - access to RDS"
+      vpc_id      = module.vpc["multiregion-${local.environment}-vpc"].vpc_id
+
+      ingress_rules = []
+
+      egress_rules = [
+        {
+          from_port   = 5432
+          to_port     = 5432
+          protocol    = "tcp"
+          cidr_blocks = ["${local.region1.vpc_cidr}.0/24"]
+        },
+        {
+          from_port   = 443
+          to_port     = 443
+          protocol    = "tcp"
+          cidr_blocks = ["0.0.0.0/0"]
+        }
+      ]
+
+      tags = local.common_tags
+    }
+  }
+
+  # Security Groups for Lambda (Region 2)
+  security_groups_lambda_2 = {
+    "multiregion-${local.environment}-lambda-sg2" = {
+      description = "Security group for Lambda function - access to RDS replica"
+      vpc_id      = module.vpc2["multiregion-${local.environment}-vpc"].vpc_id
+
+      ingress_rules = []
+
+      egress_rules = [
+        {
+          from_port   = 5432
+          to_port     = 5432
+          protocol    = "tcp"
+          cidr_blocks = ["${local.region2.vpc_cidr}.0/24"]
+        },
+        {
+          from_port   = 443
+          to_port     = 443
+          protocol    = "tcp"
+          cidr_blocks = ["0.0.0.0/0"]
+        }
+      ]
+
+      tags = local.common_tags
+    }
+  }
+
+  # Lambda Functions
+  lambda_functions = {
+    "multiregion-${local.environment}-api" = {
+      function_name = "multiregion-${local.environment}-api"
+      role_arn      = module.iam_roles["lambda-execution-role-${local.environment}"].role_arn
+      handler       = "lambda_function.handler"
+      runtime       = "python3.11"
+      timeout       = 30
+      memory_size   = 256
+      filename      = "${path.root}/lambda_function.zip"
+
+      environment_variables = {
+        DB_HOST       = module.rds["multiregion-${local.environment}-rds"].db_instance_endpoint
+        DB_NAME       = "postgres"
+        DB_USER       = "postgres_admin"
+        DB_SECRET_ARN = module.secrets_manager["rds_admin_password_${local.environment}_2"].secret_arn
+        DB_PORT       = "5432"
+      }
+
+      subnet_ids         = module.vpc["multiregion-${local.environment}-vpc"].private_subnet_ids
+      security_group_ids = [module.security_groups_lambda["multiregion-${local.environment}-lambda-sg"].security_group_id]
+
+      create_function_url = true
+      function_url_auth_type = "NONE"
+      function_url_cors = {
+        allow_credentials = false
+        allow_origins = ["*"]
+        allow_methods = ["*"]
+        allow_headers = ["*"]
+        expose_headers = []
+        max_age       = 86400
+      }
+
+      create_log_group   = true
+      log_retention_days = 7
+
+      tags = local.common_tags
+    }
+  }
+
+  # Lambda Functions for Region 2
+  lambda_functions_2 = {
+    "multiregion-${local.environment}-api-2" = {
+      function_name = "multiregion-${local.environment}-api-2"
+      role_arn      = module.iam_roles["lambda-execution-role-${local.environment}"].role_arn
+      handler       = "lambda_function.handler"
+      runtime       = "python3.11"
+      timeout       = 30
+      memory_size   = 256
+      filename      = "${path.root}/lambda_function.zip"
+
+      environment_variables = {
+        DB_HOST       = module.rds_read_replica["multiregion-${local.environment}-rds-replica"].read_replica_endpoint
+        DB_NAME       = "postgres"
+        DB_USER       = "postgres_admin"
+        DB_SECRET_ARN = module.secrets_manager["rds_admin_password_${local.environment}_2"].secret_arn
+        DB_PORT       = "5432"
+      }
+
+      subnet_ids         = module.vpc2["multiregion-${local.environment}-vpc"].private_subnet_ids
+      security_group_ids = [module.security_groups_lambda_2["multiregion-${local.environment}-lambda-sg2"].security_group_id]
+
+      create_function_url = true
+      function_url_auth_type = "NONE"
+      function_url_cors = {
+        allow_credentials = false
+        allow_origins = ["*"]
+        allow_methods = ["*"]
+        allow_headers = ["*"]
+        expose_headers = []
+        max_age       = 86400
+      }
+
+      create_log_group   = true
+      log_retention_days = 7
+
+      tags = local.common_tags
+    }
+  }
+
+  # CloudFront Distribution
+  cloudfront_distributions = {
+    "multiregion-${local.environment}-frontend" = {
+      comment             = "Multi-Region Frontend Distribution"
+      default_root_object = "index.html"
+      price_class         = "PriceClass_100"
+      enabled             = true
+
+      origins = [
+        {
+          domain_name = module.s3["multiregion-${local.account_id}-${local.region1["region"]}-${local.environment}-data"].bucket_regional_domain_name
+          origin_id   = "S3-primary"
+          s3_origin_config = {}
+        },
+        {
+          domain_name = module.s3_2["multiregion-${local.account_id}-${local.region2["region"]}-${local.environment}-data"].bucket_regional_domain_name
+          origin_id   = "S3-secondary"
+          s3_origin_config = {}
+        }
+      ]
+
+      default_cache_behavior = {
+        allowed_methods  = ["GET", "HEAD", "OPTIONS"]
+        cached_methods   = ["GET", "HEAD"]
+        target_origin_id = "S3-primary"
+
+        forwarded_values = {
+          query_string = false
+          cookies = {
+            forward = "none"
+          }
+        }
+
+        viewer_protocol_policy = "redirect-to-https"
+        min_ttl                = 0
+        default_ttl            = 3600
+        max_ttl                = 86400
+        compress               = true
+      }
+
+      custom_error_responses = [
+        {
+          error_code         = 404
+          response_code      = 200
+          response_page_path = "/index.html"
+        },
+        {
+          error_code         = 403
+          response_code      = 200
+          response_page_path = "/index.html"
+        }
+      ]
+
+      tags = local.common_tags
+    }
+  }
 }
+
+
 
 
