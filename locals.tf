@@ -308,7 +308,7 @@ locals {
       function_name = "multiregion-${local.environment}-api"
       role_arn      = module.iam_roles["lambda-execution-role-${local.environment}"].role_arn
       handler       = "lambda_function.handler"
-      runtime       = "python3.11"
+      runtime       = "python3.12"
       timeout       = 30
       memory_size   = 256
       filename      = "${path.root}/lambda_function.zip"
@@ -348,7 +348,7 @@ locals {
       function_name = "multiregion-${local.environment}-api-2"
       role_arn      = module.iam_roles["lambda-execution-role-${local.environment}"].role_arn
       handler       = "lambda_function.handler"
-      runtime       = "python3.11"
+      runtime       = "python3.12"
       timeout       = 30
       memory_size   = 256
       filename      = "${path.root}/lambda_function.zip"
