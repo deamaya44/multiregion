@@ -58,12 +58,13 @@ module "vpc2" {
   common_tags = each.value.tags
 }
 
-module "security_groups" {
+# Security Groups for EC2 instances (Region 1)
+module "security_groups_ec2" {
   source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/security_groups?ref=main"
-  for_each = local.security_groups
+  for_each = local.security_groups_ec2
 
   # Security Group Configuration
-  name        = each.value.name
+  name        = each.key
   description = each.value.description
   vpc_id      = each.value.vpc_id
 
@@ -74,17 +75,38 @@ module "security_groups" {
   # Common Tags
   common_tags = each.value.tags
 
-  depends_on = [module.vpc, module.vpc2]
+  depends_on = [module.vpc]
 }
-module "security_groups_2" {
+
+# Security Groups for RDS (Region 1)
+module "security_groups_rds" {
+  source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/security_groups?ref=main"
+  for_each = local.security_groups_rds
+
+  # Security Group Configuration
+  name        = each.key
+  description = each.value.description
+  vpc_id      = each.value.vpc_id
+
+  # Rules Configuration
+  ingress_rules = each.value.ingress_rules
+  egress_rules  = each.value.egress_rules
+
+  # Common Tags
+  common_tags = each.value.tags
+
+  depends_on = [module.vpc, module.security_groups_ec2]
+}
+# Security Groups for EC2 instances (Region 2)
+module "security_groups_ec2_2" {
   providers = {
     aws = aws.multi
   }
   source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/security_groups?ref=main"
-  for_each = local.security_groups_2
+  for_each = local.security_groups_ec2_2
 
   # Security Group Configuration
-  name        = each.value.name
+  name        = each.key
   description = each.value.description
   vpc_id      = each.value.vpc_id
 
@@ -95,7 +117,30 @@ module "security_groups_2" {
   # Common Tags
   common_tags = each.value.tags
 
-  depends_on = [module.vpc, module.vpc2]
+  depends_on = [module.vpc2]
+}
+
+# Security Groups for RDS (Region 2)
+module "security_groups_rds_2" {
+  providers = {
+    aws = aws.multi
+  }
+  source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/security_groups?ref=main"
+  for_each = local.security_groups_rds_2
+
+  # Security Group Configuration
+  name        = each.key
+  description = each.value.description
+  vpc_id      = each.value.vpc_id
+
+  # Rules Configuration
+  ingress_rules = each.value.ingress_rules
+  egress_rules  = each.value.egress_rules
+
+  # Common Tags
+  common_tags = each.value.tags
+
+  depends_on = [module.vpc2, module.security_groups_ec2_2]
 }
 
 module "secrets_manager" {
@@ -103,7 +148,7 @@ module "secrets_manager" {
   for_each = local.secrets
 
   # Basic Configuration
-  secret_name = each.value.secret_name
+  secret_name = each.key
   description = each.value.description
 
   # Secret Content (choose one option)
@@ -126,7 +171,7 @@ module "rds" {
   for_each = local.rds_instances
 
   # Basic Configuration
-  identifier     = each.value.identifier
+  identifier     = each.key
   engine         = each.value.engine
   engine_version = each.value.engine_version
   instance_class = each.value.instance_class
@@ -154,7 +199,7 @@ module "rds" {
   # Common Tags
   common_tags = each.value.tags
 
-  depends_on = [module.vpc, module.security_groups, module.secrets_manager]
+  depends_on = [module.vpc, module.secrets_manager]
 }
 
 # IAM Policies Module
@@ -163,7 +208,7 @@ module "iam_policies" {
   for_each = local.iam_policies
 
   # Policy Configuration
-  policy_name     = each.value.policy_name
+  policy_name     = each.key
   description     = each.value.description
   policy_document = each.value.policy_document
 
@@ -179,13 +224,14 @@ module "iam_roles" {
   for_each = local.iam_roles
 
   # Role Configuration
-  role_name               = each.value.role_name
+  role_name               = each.key
   description            = each.value.description
   assume_role_policy     = each.value.assume_role_policy
   create_instance_profile = each.value.create_instance_profile
 
   # Policies
   custom_policy_arns = each.value.custom_policy_arns
+  aws_managed_policy_arns = lookup(each.value, "aws_managed_policy_arns", [])
 
   # Common Tags
   common_tags = each.value.tags
@@ -201,7 +247,7 @@ module "rds_read_replica" {
   for_each = local.rds_read_replicas
 
   # Basic Configuration
-  identifier           = each.value.identifier
+  identifier           = each.key
   source_db_identifier = each.value.source_db_identifier
   instance_class       = each.value.instance_class
 
@@ -221,7 +267,7 @@ module "rds_read_replica" {
 
   # Common Tags
   common_tags = each.value.tags
-  depends_on  = [module.vpc2, module.security_groups_2]
+  depends_on  = [module.vpc2, module.security_groups_rds_2]
 }
 
 # EC2 Instances - Primary Region (us-east-1)
@@ -230,7 +276,7 @@ module "ec2" {
   for_each = local.ec2_instances
 
   # Basic Configuration
-  instance_name = each.value.instance_name
+  instance_name = each.key
   instance_type = each.value.instance_type
 
   # Network Configuration
@@ -257,7 +303,7 @@ module "ec2" {
   # Common Tags
   common_tags = each.value.tags
 
-  depends_on = [module.vpc, module.security_groups, module.rds, module.iam_roles]
+  depends_on = [module.vpc, module.security_groups_ec2, module.iam_roles]
 }
 
 # EC2 Instances - Secondary Region (us-west-2)
@@ -269,7 +315,7 @@ module "ec2_secondary" {
   for_each = local.ec2_instances_2
 
   # Basic Configuration
-  instance_name = each.value.instance_name
+  instance_name = each.key
   instance_type = each.value.instance_type
 
   # Network Configuration
@@ -296,5 +342,5 @@ module "ec2_secondary" {
   # Common Tags
   common_tags = each.value.tags
 
-  depends_on = [module.vpc2, module.security_groups_2, module.rds_read_replica, module.iam_roles]
+  depends_on = [module.vpc2, module.security_groups_ec2_2, module.iam_roles]
 }

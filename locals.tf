@@ -93,35 +93,10 @@ locals {
 
     }
   }
-  security_groups = {
-    "multiregion-${local.environment}-rds-sg" = {
-      name        = "multiregion-${local.environment}-rds-sg"
-      description = "Security group for RDS instance in ${local.environment} environment"
-      vpc_id      = module.vpc["multiregion-${local.environment}-vpc"].vpc_id
-
-      ingress_rules = [
-        {
-          from_port   = 5432
-          to_port     = 5432
-          protocol    = "tcp"
-          cidr_blocks = ["0.0.0.0/0"]
-        }
-      ]
-
-      egress_rules = [
-        {
-          from_port   = 0
-          to_port     = 0
-          protocol    = "-1"
-          cidr_blocks = ["0.0.0.0/0"]
-        }
-      ]
-
-      tags = local.common_tags
-    }
+  # Security Groups for EC2 instances (Region 1)
+  security_groups_ec2 = {
     "multiregion-${local.environment}-ec2-sg" = {
-      name        = "multiregion-${local.environment}-ec2-sg"
-      description = "Security group for EC2 instances with SSH and database access in ${local.environment} environment"
+      description = "Security group for EC2 instances with SSH access in ${local.environment} environment"
       vpc_id      = module.vpc["multiregion-${local.environment}-vpc"].vpc_id
 
       ingress_rules = [
@@ -130,18 +105,6 @@ locals {
           to_port     = 22
           protocol    = "tcp"
           cidr_blocks = ["0.0.0.0/0"]  # Consider restricting to your IP
-        },
-        {
-          from_port   = 80
-          to_port     = 80
-          protocol    = "tcp"
-          cidr_blocks = ["0.0.0.0/0"]
-        },
-        {
-          from_port   = 443
-          to_port     = 443
-          protocol    = "tcp"
-          cidr_blocks = ["0.0.0.0/0"]
         }
       ]
 
@@ -157,18 +120,39 @@ locals {
       tags = local.common_tags
     }
   }
-  security_groups_2 = {
-    "multiregion-${local.environment}-rds-sg2" = {
-      name        = "multiregion-${local.environment}-rds-sg2"
-      description = "Security group for RDS instance in ${local.environment} environment"
-      vpc_id      = module.vpc2["multiregion-${local.environment}-vpc"].vpc_id
+
+  # Security Groups for RDS (Region 1) - Allow access from private subnets
+  security_groups_rds = {
+    "multiregion-${local.environment}-rds-sg" = {
+      description = "Security group for RDS instance - access from private subnets"
+      vpc_id      = module.vpc["multiregion-${local.environment}-vpc"].vpc_id
 
       ingress_rules = [
         {
           from_port   = 5432
           to_port     = 5432
           protocol    = "tcp"
-          cidr_blocks = ["0.0.0.0/0"]
+            source_security_group_id = module.security_groups_ec2["multiregion-${local.environment}-ec2-sg"].security_group_id
+        }
+      ]
+
+      egress_rules = []
+
+      tags = local.common_tags
+    }
+  }
+  # Security Groups for EC2 instances (Region 2)
+  security_groups_ec2_2 = {
+    "multiregion-${local.environment}-ec2-sg2" = {
+      description = "Security group for EC2 instances with SSH access in ${local.environment} environment (us-west-2)"
+      vpc_id      = module.vpc2["multiregion-${local.environment}-vpc"].vpc_id
+
+      ingress_rules = [
+        {
+          from_port   = 22
+          to_port     = 22
+          protocol    = "tcp"
+          cidr_blocks = ["0.0.0.0/0"]  # Consider restricting to your IP
         }
       ]
 
@@ -182,48 +166,31 @@ locals {
       ]
 
       tags = local.common_tags
-    },
-    "multiregion-${local.environment}-ec2-sg2" = {
-      name        = "multiregion-${local.environment}-ec2-sg2"
-      description = "Security group for EC2 instances with SSH and database access in ${local.environment} environment (us-west-2)"
+    }
+  }
+
+  # Security Groups for RDS (Region 2) - Allow access from private subnets  
+  security_groups_rds_2 = {
+    "multiregion-${local.environment}-rds-sg2" = {
+      description = "Security group for RDS replica - access from private subnets"
       vpc_id      = module.vpc2["multiregion-${local.environment}-vpc"].vpc_id
 
       ingress_rules = [
         {
-          from_port   = 22
-          to_port     = 22
+          from_port   = 5432
+          to_port     = 5432
           protocol    = "tcp"
-          cidr_blocks = ["0.0.0.0/0"]  # Consider restricting to your IP
-        },
-        {
-          from_port   = 80
-          to_port     = 80
-          protocol    = "tcp"
-          cidr_blocks = ["0.0.0.0/0"]
-        },
-        {
-          from_port   = 443
-          to_port     = 443
-          protocol    = "tcp"
-          cidr_blocks = ["0.0.0.0/0"]
+            source_security_group_id = module.security_groups_ec2_2["multiregion-${local.environment}-ec2-sg2"].security_group_id
         }
       ]
 
-      egress_rules = [
-        {
-          from_port   = 0
-          to_port     = 0
-          protocol    = "-1"
-          cidr_blocks = ["0.0.0.0/0"]
-        }
-      ]
+      egress_rules = []
 
       tags = local.common_tags
     }
   }
   secrets = {
-    "rds_admin_password" = {
-      secret_name              = "rds_admin_password_${local.environment}"
+    "rds_admin_password_${local.environment}_2" = {
       description              = "RDS Admin Password for ${local.environment} environment"
       generate_random_password = true
       password_length          = 16
@@ -234,7 +201,6 @@ locals {
   # IAM Policies Configuration
   iam_policies = {
     "ec2-secrets-manager-policy-${local.environment}" = {
-      policy_name = "ec2-secrets-manager-policy-${local.environment}"
       description = "Policy to allow EC2 instances to read RDS credentials from Secrets Manager"
       policy_document = file("${path.root}/policies/ec2-secrets-manager-policy.json")
       tags = local.common_tags
@@ -243,18 +209,17 @@ locals {
   
   # IAM Roles Configuration
   iam_roles = {
-    "ec2-secrets-role-${local.environment}" = {
-      role_name = "ec2-secrets-manager-role-${local.environment}"
-      description = "Role for EC2 instances to access Secrets Manager for RDS credentials"
+    "ec2-secrets-manager-role-${local.environment}" = {
+      description = "Role for EC2 instances to access Secrets Manager for RDS credentials and SSM"
       assume_role_policy = file("${path.root}/policies/ec2-assume-role-policy.json")
       create_instance_profile = true
       custom_policy_arns = [module.iam_policies["ec2-secrets-manager-policy-${local.environment}"].policy_arn]
+      aws_managed_policy_arns = ["arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"]
       tags = local.common_tags
     }
   }
   rds_instances = {
     "multiregion-${local.environment}-rds" = {
-      identifier             = "multiregion-${local.environment}-rds"
       engine                 = "postgres"
       engine_version         = "18"
       instance_class         = "db.t3.micro"
@@ -262,9 +227,9 @@ locals {
       storage_encrypted      = true  # Explicit encryption
       kms_key_id            = data.aws_kms_key.rds_primary.arn
       username               = "postgres_admin"
-      password               = module.secrets_manager["rds_admin_password"].secret_arn
+      password               = module.secrets_manager["rds_admin_password_${local.environment}_2"].secret_arn
       port                   = 5432
-      vpc_security_group_ids = [module.security_groups["multiregion-${local.environment}-rds-sg"].security_group_id] # Add security group IDs if needed
+      vpc_security_group_ids = [module.security_groups_rds["multiregion-${local.environment}-rds-sg"].security_group_id] # Add security group IDs if needed
       subnet_ids             = module.vpc["multiregion-${local.environment}-vpc"].private_subnet_ids
       publicly_accessible    = false
       tags                   = local.common_tags
@@ -272,10 +237,9 @@ locals {
   }
   rds_read_replicas = {
     "multiregion-${local.environment}-rds-replica" = {
-      identifier             = "multiregion-${local.environment}-rds-replica"
       source_db_identifier   = module.rds["multiregion-${local.environment}-rds"].db_instance_arn
       instance_class         = "db.t3.micro"
-      vpc_security_group_ids = [module.security_groups_2["multiregion-${local.environment}-rds-sg2"].security_group_id]
+      vpc_security_group_ids = [module.security_groups_rds_2["multiregion-${local.environment}-rds-sg2"].security_group_id]
       publicly_accessible    = false
       subnet_ids             = module.vpc2["multiregion-${local.environment}-vpc"].private_subnet_ids
       create_subnet_group    = true
@@ -293,12 +257,11 @@ locals {
   ec2_instances = {
     # Primary region EC2 instance (us-east-1)
     "multiregion-${local.environment}-ec2-primary" = {
-      instance_name = "multiregion-${local.environment}-ec2-primary"
       instance_type = "t3.micro"
       
       # Network Configuration
       subnet_id                    = module.vpc["multiregion-${local.environment}-vpc"].private_subnet_ids[0]
-      vpc_security_group_ids      = [module.security_groups["multiregion-${local.environment}-ec2-sg"].security_group_id]
+      vpc_security_group_ids      = [module.security_groups_ec2["multiregion-${local.environment}-ec2-sg"].security_group_id]
       associate_public_ip_address = false
       
       # SSH Access using templatefile
@@ -307,7 +270,7 @@ locals {
       public_key     = file("${path.root}/templates/demo-ssh-key.pub")
       
       # IAM Instance Profile for Secrets Manager access
-      iam_instance_profile = module.iam_roles["ec2-secrets-role-${local.environment}"].instance_profile_name
+      iam_instance_profile = module.iam_roles["ec2-secrets-manager-role-${local.environment}"].instance_profile_name
       
       # Storage Configuration
       root_volume_size      = 10
@@ -320,7 +283,7 @@ locals {
         db_name     = "postgres"
         db_port     = "5432"
         region      = "us-east-1"
-        secret_arn  = module.secrets_manager["rds_admin_password"].secret_arn
+        secret_arn  = module.secrets_manager["rds_admin_password_${local.environment}_2"].secret_arn
       }))
       
       tags = merge(local.common_tags, {
@@ -333,12 +296,11 @@ locals {
   # EC2 Instances for secondary region (us-west-2)
   ec2_instances_2 = {
     "multiregion-${local.environment}-ec2-secondary" = {
-      instance_name = "multiregion-${local.environment}-ec2-secondary"
       instance_type = "t3.micro"
       
       # Network Configuration
       subnet_id                    = module.vpc2["multiregion-${local.environment}-vpc"].private_subnet_ids[0]
-      vpc_security_group_ids      = [module.security_groups_2["multiregion-${local.environment}-ec2-sg2"].security_group_id]
+      vpc_security_group_ids      = [module.security_groups_ec2_2["multiregion-${local.environment}-ec2-sg2"].security_group_id]
       associate_public_ip_address = false
       
       # SSH Access using templatefile
@@ -347,7 +309,7 @@ locals {
       public_key     = file("${path.root}/templates/demo-ssh-key.pub")
       
       # IAM Instance Profile for Secrets Manager access
-      iam_instance_profile = module.iam_roles["ec2-secrets-role-${local.environment}"].instance_profile_name
+      iam_instance_profile = module.iam_roles["ec2-secrets-manager-role-${local.environment}"].instance_profile_name
       
       # Storage Configuration
       root_volume_size      = 10
@@ -360,7 +322,7 @@ locals {
         db_name     = "postgres"
         db_port     = "5432"
         region      = "us-west-2"
-        secret_arn  = module.secrets_manager["rds_admin_password"].secret_arn
+        secret_arn  = module.secrets_manager["rds_admin_password_${local.environment}_2"].secret_arn
       }))
       
       tags = merge(local.common_tags, {
