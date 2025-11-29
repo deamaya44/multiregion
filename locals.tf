@@ -334,6 +334,8 @@ locals {
   s3_buckets = {
   "multiregion-${local.account_id}-${local.region1["region"]}-${local.environment}-data" = {
     tags                  = local.common_tags
+    acl_enabled        = true
+    acl                = "private"
     versioning            = true
     block_public_access   = true
     policy                = null

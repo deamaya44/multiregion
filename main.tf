@@ -351,9 +351,17 @@ module "s3" {
 
   name                = each.key
   versioning          = each.value.versioning
+  acl_enabled         = try(each.value.acl_enabled, false)
+  acl                 = try(each.value.acl, "private")
+  replication_enabled = try(each.value.replication_enabled, false)
+  role_arn            = try(each.value.role_arn, null)
+  bucket_id           = try(each.value.bucket_id, null)
+  destination_bucket_arn = try(each.value.destination_bucket_arn, null)
+  storage_class       = try(each.value.storage_class, "STANDARD")
   block_public_access = each.value.block_public_access
   policy              = try(each.value.policy, null)
   tags                = each.value.tags
+  depends_on = [ module.s3_2 ]
 }
 module "s3_2" {
   source   = "git::ssh://git@github.com/deamaya44/aws_modules.git//modules/s3/bucket?ref=main"
@@ -363,6 +371,13 @@ module "s3_2" {
   }
   name                = each.key
   versioning          = each.value.versioning
+  # acl_enabled         = try(each.value.acl_enabled, false)
+  # acl                 = try(each.value.acl, "private")
+  # replication_enabled = try(each.value.replication_enabled, false)
+  # role_arn            = try(each.value.role_arn, null)
+  # bucket_id           = try(each.value.bucket_id, null)
+  # destination_bucket_arn = try(each.value.destination_bucket_arn, null)
+  # storage_class       = try(each.value.storage_class, "STANDARD")
   block_public_access = each.value.block_public_access
   policy              = try(each.value.policy, null)
   tags                = each.value.tags
